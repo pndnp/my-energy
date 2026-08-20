@@ -1,0 +1,12 @@
+FROM node:20-alpine AS dev
+
+WORKDIR /app/backend
+
+# Copy backend package files
+COPY backend/package.json backend/package-lock.json ./
+RUN npm ci
+
+# Copy backend source code
+COPY backend/ ./
+
+CMD ["sh", "-c", "npx prisma generate && npx prisma migrate deploy && npm run dev"]

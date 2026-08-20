@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: energy_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: energy_day
+      POSTGRES_USER: energy_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U energy_user -d energy_day"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Production services
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    profiles: ["prod"]
+    container_name: energy_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000/api/health",
+        ]
+      interval: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    profiles: ["prod"]
+    container_name: energy_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # Development services (profile "dev")
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend.dev
+    container_name: energy_backend_dev
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.development
+    environment:
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/backend/src
+      - ./backend/package.json:/app/backend/package.json
+      - ./backend/package-lock.json:/app/backend/package-lock.json
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000/api/health",
+        ]
+      interval: 10s
+    profiles: ["dev"]
+
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.dev
+    container_name: energy_frontend_dev
+    restart: always
+    depends_on:
+      - backend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/frontend/src
+      - ./frontend/package.json:/app/frontend/package.json
+      - ./frontend/package-lock.json:/app/frontend/package-lock.json
+    environment:
+      VITE_API_URL: /api
+      HOST: 0.0.0.0
+    profiles: ["dev"]

@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Auto-format + auto-fix lint errors for both projects
+cd frontend && npx biome format --write src/ 2>/dev/null && npx biome check --write src/ 2>/dev/null || exit 1
+cd ../backend && npx biome format --write src/ 2>/dev/null && npx biome check --write src/ 2>/dev/null || exit 1

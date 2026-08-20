@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  dailyLogs    DailyLog[]
+
+  @@map("users")
+}
+
+model DailyLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  date         DateTime @db.Date
+  sleep        Int
+  nutrition    Int
+  caffeine     Int
+  alcohol      Int
+  activity     Int
+  mood         Int
+  wellbeing    Int
+  stress       Int
+  energy       Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@map("daily_logs")
+}
+
+model AiInsight {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  periodDays   Int      @map("period_days")
+  insightsJSON String   @map("insights_json")
+  experimentJSON String  @map("experiment_json")
+  generatedAt  DateTime @default(now()) @map("generated_at")
+
+  @@unique([userId, periodDays])
+  @@map("ai_insights")
+}
