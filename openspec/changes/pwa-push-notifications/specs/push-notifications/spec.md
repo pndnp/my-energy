@@ -36,8 +36,8 @@ The system MUST check every day at 20:00 (server timezone Europe/Moscow) whether
 
 #### Scenario: No duplicate reminders
 
-- **WHEN** the cron job runs multiple times on the same day (e.g., due to restarts)
-- **THEN** each user receives only ONE reminder per day (tracked via `lastReminderSent` field in `daily_logs`)
+- **WHEN** a cron run targets a subscription whose `lastReminderSent` field already equals today's MSK date
+- **THEN** that subscription is skipped — each device receives only ONE reminder per calendar day (tracked via `lastReminderSent` on `push_subscriptions`, updated after every successful send)
 
 #### Scenario: Reminder NOT sent when log exists
 
@@ -92,19 +92,29 @@ The system MUST handle browser-initiated unsubscriptions and failed pushes autom
 
 #### Scenario: User revokes notification permission in browser
 
-- **WHEN** the browser fires `pushsubscriptionchange` event with reason="permissionDenied"
-- **THEN** the frontend automatically calls `DELETE /api/push-subscriptions/:endpoint` to clean up the subscription on the server
+- **WHEN** the Service Worker fires `pushsubscriptionchange` with `event.new === null` (permission revoked or subscription invalidated by the platform)
+- **THEN** the frontend calls `DELETE /api/push-subscriptions/:endpoint` for the previous endpoint, and no further reminders are sent to that device
+
+#### Scenario: Subscription keys rotated by browser
+
+- **WHEN** the Service Worker fires `pushsubscriptionchange` with a non-null `event.new` (same endpoint but new auth/p256dh keys)
+- **THEN** the frontend re-sends the new subscription via `POST /api/push-subscriptions`, and the server upserts it so subsequent pushes use the current keys
 
 ### Requirement: Cron Job Scheduling
 
-The system MUST schedule the daily check using a timezone-aware cron expression that respects the server environment variable `TZ=Europe/Moscow`.
+The system MUST schedule the daily check using a timezone-aware cron expression via an explicit `timezone: 'Europe/Moscow'` option passed to `node-cron.schedule()` (independent of the process/host `TZ`).
 
 #### Scenario: Schedule set to 20:00 Moscow time
 
-- **WHEN** the backend starts with `TZ=Europe/Moscow` environment variable
-- **THEN** the cron job executes once daily at exactly 20:00 MSK (UTC+3), equivalent to 17:00 UTC
+- **WHEN** the backend starts the cron module (production only)
+- **THEN** the job executes once daily at exactly 20:00 MSK (UTC+3), equivalent to 17:00 UTC, computed by node-cron from its `timezone` option without any host/container `TZ` setting
 
-#### Scenario: Docker compose sets TZ correctly
+#### Scenario: Cron runs only in production
 
-- **WHEN** docker-compose.yml includes `environment: - TZ: Europe/Moscow` for the backend service
-- **THEN** both the Node.js process and any internal timers use the correct Moscow timezone for date comparisons
+- **WHEN** the backend process starts with `NODE_ENV !== 'production'` (e.g., dev container)
+- **THEN** the cron job is NOT scheduled — reminder dispatching happens exclusively from the production deployment, so local development never sends real pushes
+
+#### Scenario: MSK date computed without host timezone
+
+- **WHEN** the cron run determines "today" for log matching and `lastReminderSent` comparison
+- **THEN** it uses the value computed at startup from `Intl.DateTimeFormat({ timeZone: 'Europe/Moscow' })`, independent of the container/host `TZ` and of the user's client timezone

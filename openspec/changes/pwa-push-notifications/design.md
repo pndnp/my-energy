@@ -16,7 +16,7 @@ The user's requirement is simple: convert the app to an installable PWA and add 
 - Add `pushNotificationsEnabled` Boolean field to `User` model (default `true`) to future-proof user settings
 
 **Non-Goals:**
-- Per-user timezone selection — all cron scheduling uses `TZ=Europe/Moscow` environment variable
+- Per-user timezone selection — all cron scheduling passes an explicit `{ timezone: 'Europe/Moscow' }` to `node-cron` in code (no host/container TZ dependency)
 - iOS/Apple Push Notification Service (APNs) support — only Web Push (Chrome/Firefox/Android/Desktop)
 - Rich notification actions (reply buttons, inline input) — simple title/body notifications only
 - Analytics/metrics for push delivery rates — basic success/failure logging only
@@ -67,26 +67,21 @@ await webpush.sendNotification(subscription, payload);
 - **Custom WebSocket long-polling** — complex, battery-draining, doesn't work offline
 - **Server-Sent Events (SSE)** — one-way only, requires persistent connection
 
-### 3. Scheduling: node-cron with TZ environment variable
+### 3. Scheduling: node-cron with explicit timezone option in code
 
-**Decision:** Use `node-cron` with `process.env.TZ = 'Europe/Moscow'` set at container startup via Docker Compose `environment:` block.
-
-```yaml
-backend:
-  environment:
-    - TZ: Europe/Moscow
-```
+**Decision:** Use `node-cron` with an explicit `timezone: 'Europe/Moscow'` option in code (no `TZ` env var). "Today MSK" is computed once at startup via `Intl.DateTimeFormat(undefined, { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())` — no third-party tz library.
 
 ```typescript
 import cron from 'node-cron';
 cron.schedule('0 20 * * *', async () => {
   // Check logs, send reminders
-}, { scheduled: true, timezone: 'Europe/Moscow' });
+}, { name: 'daily-reminder', timezone: 'Europe/Moscow' });
 ```
+(`name` is optional but recommended by node-cron docs; available `TaskOptions`: `timezone`, `name`, `noOverlap`, `maxExecutions`, …)
 
 **Rationale:**
-- `node-cron` supports explicit timezone parameter independent of system TZ
-- Docker Compose sets `TZ` once — all containers inherit correct timezone for date comparisons
+- `node-cron` computes fire times itself via the `timezone` option (backed by Intl) — a process-wide `TZ` would be dead weight for scheduling; it only affects incidental `toString()` log formatting and behaves inconsistently across Node versions
+- `Intl`-based date computation is deterministic per spec, whereas `new Date().toLocaleString('en-US', { timeZone })` reparsing (old plan) breaks if locale data shifts — avoid
 - No external scheduler needed (no Redis, no Celery, no Kubernetes CronJob)
 
 **Alternatives considered:**
@@ -105,6 +100,7 @@ model PushSubscription {
   endpoint   String   @unique
   p256dhKey  String
   authSecret String
+  lastReminderSent DateTime? // MSK date of the last reminder pushed; null = never sent
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -116,6 +112,7 @@ model PushSubscription {
 - Multiple devices per user is common (phone + laptop) — store each separately
 - `endpoint` is globally unique across all users (browser-generated URI) — enforce uniqueness
 - `@@index([userId])` for fast lookup during cron scan
+- `lastReminderSent` on the subscription itself (not on `daily_logs`) keeps the dedupe key local: every push attempt targets a subscription, and the "already reminded today" check must happen per-device anyway (a user with phone+laptop should get one notification on each device, not two on the same one)
 
 **Alternatives considered:**
 - **Embed subscriptions in User JSON field** — loses query performance, breaks migration paths
@@ -146,32 +143,30 @@ model User {
 |------|-----------|
 | **Browser permission revocation** — users can disable notifications in OS/browser settings, causing silent failures | Handle `web-push` HTTP 410 responses; delete expired subscriptions on next login attempt or via `pushsubscriptionchange` event |
 | **Mobile Safari/APNs not supported** — iOS Safari does not implement Web Push spec | Limit expectations to Chrome/Android/Desktop for MVP; iOS native push is a separate Phase N effort |
-| **Cron job drift on container restart** — if container restarts mid-cron window, job might fire twice | Implement `lastReminderSent` tracking in `daily_logs`; idempotent check: only send if `date == today && lastReminderSent < today` |
-| **VAPID key rotation** — keys expire after ~24 hours in some browsers | Regenerate VAPID keys weekly; update `.env` and restart container (acceptable for personal app) |
+| **Cron double-fire on container restart** | The `'0 20 * * *'` window never overlaps an actual restart (job runs once per day, ~seconds of work), so this cannot happen in practice. Still make the run idempotent (in-memory "sent for today MSK date" guard): if it ever did double-run within the same calendar day, re-sending is at worst a duplicate reminder — acceptable, no extra state needed. A `lastReminderSent` column on `daily_logs` would NOT solve this (the row doesn't exist when the log is unfilled) and adds no value. |
+| **VAPID key leak** — private key from `.env` leaked into git/logs, allowing third parties to send pushes on behalf of the app | VAPID keys do NOT expire and need no scheduled rotation (generate the pair once, per web-push docs). Regenerate only upon compromise: new pair in `.env` + new public key in frontend; after rotation old subscriptions may fail validation until users re-subscribe. The per-request JWT (≤24h lifetime) is built automatically by the library on every push — no manual handling. |
 | **Large subscription tables growth** — stale subscriptions accumulate over years | Monthly cleanup job deletes subscriptions inactive > 90 days (deferred to Phase X) |
-| **Timezone mismatch between containers** — frontend calculates dates locally, cron uses server TZ | Document clearly: "All times are Moscow time." Frontend displays dates consistently with server response. No per-user TZ setting initially. |
+| **Timezone mismatch between containers** — frontend calculates dates locally, cron uses its own tz computation | Document clearly: "All times are Moscow time." Backend computes the MSK date via `Intl` (deterministic, no host TZ); frontend displays dates as returned by the server. No per-user TZ setting initially. |
 
 ## Migration Plan
 
 1. **Database migration**: `npx prisma migrate dev --name add_push_infrastructure`
-   - Creates `push_subscriptions` table
+   - Creates `push_subscriptions` table (incl. `lastReminderSent DateTime?`)
    - Adds `pushNotificationsEnabled` column to `users`
    - Run before any code changes — zero downtime
 
 2. **Backend changes** (non-breaking):
    - Install `web-push`, `node-cron`
-   - Generate VAPID keys: `web-push generate-vapid-keys` → save to `.env`
+   - Generate VAPID keys once: `npx web-push generate-vapid-keys` → save to `.env`; pass the subject string (`mailto:admin@example.com`) as first arg of `setVapidDetails()`
    - Add endpoints: `POST /api/push-subscriptions`, `DELETE /api/push-subscriptions/:endpoint`
-   - Add cron job module (`src/modules/push/cron.ts`)
-   - Start cron only on production deployment (check `NODE_ENV === 'production'`)
+   - Add cron job module (`src/modules/push/cron.ts`), guarded by `NODE_ENV === 'production'`
 
 3. **Docker configuration**:
    ```yaml
-   environment:
-     - TZ=Europe/Moscow
-     - VAPID_PUBLIC_KEY=...
-     - VAPID_PRIVATE_KEY=...
+   backend:
+     env_file: [.env]          # VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY from .env
    ```
+   No `TZ` needed here — `node-cron.schedule()` receives `{ timezone: 'Europe/Moscow' }` explicitly in code (the cron library computes fire times via Intl; a process-wide `TZ` only affects log timestamps and would drift if the host clock is off).
 
 4. **Frontend changes** (non-breaking):
    - Install `@vitejs/plugin-pwa`
@@ -179,9 +174,12 @@ model User {
    - Add icons to `public/icons/`
    - On successful auth: request `Notification.requestPermission()` → if granted, POST subscription to `/api/push-subscriptions`
 
-5. **Production rollout**:
-   - Deploy backend first (new endpoints + cron start)
-   - Then deploy frontend (SW activates on reload)
+5. **VPS / production rollout** (order matters — Web Push requires HTTPS end-to-end):
+   - Domain with DNS A record pointing at the server
+   - TLS termination in front of nginx (Let's Encrypt / Caddy) + `listen 443 ssl`; redirect 80 → 443
+   - nginx headers: `no-cache` for `/sw.js` and `/manifest.json`, long cache for hashed build assets
+   - Firewall: open 80 (ACME) and 443 only; keep postgres bound to 127.0.0.1
+   - Deploy backend first (new endpoints + cron start), then frontend (SW activates on reload)
    - Monitor logs for `sendNotification` errors → clean up 410 Gone subs
 
 6. **Rollback**: Safe — dropping Prisma models or removing env vars doesn't affect existing data.
@@ -196,9 +194,9 @@ model User {
 
 ### 2. MSK date computation for cron check
 
-**Decision:** Compute "today in Moscow timezone" once at process startup using manual offset or moment-timezone library. Store as `const TODAY_MSK = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }))`. All comparisons (cron check, daily log matching, lastReminderSent tracking) use this same computed value.
+**Decision:** Compute "today in Moscow timezone" once at process startup via `Intl.DateTimeFormat(undefined, { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())`. All comparisons (cron check, daily log matching, `lastReminderSent` tracking) use this same computed value. No third-party tz library.
 
-**Rationale:** Single source of truth for "today" date prevents edge cases where local UTC time differs from Moscow time across midnight boundary. No per-user timezone setting needed.
+**Rationale:** Single source of truth for "today" date prevents edge cases where local UTC time differs from Moscow time across midnight boundary. `Intl.formatToParts` is deterministic and part of Node core; the old `new Date(toLocaleString(...))` reparsing trick breaks if locale data shifts. The cron fire time itself comes from `node-cron`'s own `timezone` option — consistent by construction. No per-user timezone setting needed.
 
 ### 3. Rate limiting on subscription endpoints: not needed for MVP
 

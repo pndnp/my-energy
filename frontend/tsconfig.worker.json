@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2023", "WebWorker"],
     "module": "esnext",
-    "types": ["vite/client"],
+    "types": [],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
@@ -13,18 +13,12 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
 
-    /* Path aliases */
-    "paths": {
-      "@/*": ["./src/*"]
-    },
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "exclude": ["src/service-worker.ts"]
+  "include": ["src/service-worker.ts"]
 }

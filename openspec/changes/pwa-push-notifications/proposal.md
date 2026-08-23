@@ -25,7 +25,7 @@
 ## Impact
 
 - **Frontend**: manifest.json, Service Worker (@vitejs/plugin-pwa), запрос разрешения Notification API, отправка подписки на POST /api/subscriptions
-- **Backend**: Новая таблица `PushSubscription` в Prisma, VAPID ключи, endpoint POST /api/subscriptions + DELETE /api/subscriptions/:endpoint, node-cron планировщик, webhook обработчик ошибок推送失败
+- **Backend**: Новая таблица `PushSubscription` в Prisma, VAPID ключи, endpoint POST /api/subscriptions + DELETE /api/subscriptions/:endpoint, node-cron планировщик, обработчик ошибок отправки пушей (410 Gone → удаление подписки)
 - **Database**: Таблица `push_subscriptions`, поле `pushNotificationsEnabled` в таблице `users`
 - **Dependencies**: web-push, @vitejs/plugin-pwa, node-cron
-- **Docker Compose**: Добавить TZ=Europe/Moscow в env backend-dev и backend
+- **VPS/nginx**: HTTPS (Let's Encrypt) + `no-cache` для `/sw.js` и `/manifest.json`; VAPID-ключи в `.env`, `NODE_ENV=production` (cron стартует только в prod); чанк времени 20:00 MSK задаётся опцией `node-cron` `{ timezone: 'Europe/Moscow' }` в коде — без `TZ` в compose
