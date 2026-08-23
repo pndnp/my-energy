@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import api from "../lib/api";
+import { subscribeToPush } from "../lib/push";
 
 interface User {
   id: string;
@@ -30,6 +31,7 @@ function removeTokenFromStorage(): void {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const pushRequestedRef = useRef(false);
 
   useEffect(() => {
     // Проверяем авторизацию через API (cookie уже отправляются автоматически с withCredentials: true)
@@ -40,6 +42,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // После успешного входа просим разрешение на push и сохраняем подписку на бэкенд (один раз за сессию)
+  const requestPushAfterLogin = (): void => {
+    if (pushRequestedRef.current) return;
+    pushRequestedRef.current = true;
+    setTimeout(() => {
+      void subscribeToPush().catch(() => {});
+    }, 0);
+  };
+
   const login = async (email: string, password: string): Promise<void> => {
     const res = await api.post("/auth/login", { email, password });
     const token = res.data.token;
@@ -47,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveTokenToStorage(token);
     }
     setUser(res.data.user);
+    requestPushAfterLogin();
   };
 
   const register = async (email: string, password: string): Promise<void> => {
@@ -56,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveTokenToStorage(token);
     }
     setUser(res.data.user);
+    requestPushAfterLogin();
   };
 
   const logout = async () => {

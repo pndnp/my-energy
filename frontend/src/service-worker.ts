@@ -60,7 +60,13 @@ self.addEventListener("push", (event) => {
     badge: data.badge,
     data: { url: data.url ?? "/" },
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  console.log("[sw] push received, showing notification:", title);
+  event.waitUntil(
+    self.registration
+      .showNotification(title, options)
+      .then(() => console.log("[sw] notification shown"))
+      .catch((err) => console.log("[sw] showNotification FAILED:", String(err))),
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {

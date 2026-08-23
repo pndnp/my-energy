@@ -8,12 +8,14 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  dailyLogs    DailyLog[]
+  id                     String             @id @default(cuid())
+  email                  String             @unique
+  passwordHash           String
+  pushNotificationsEnabled Boolean          @default(true)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  dailyLogs              DailyLog[]
+  pushSubscriptions      PushSubscription[]
 
   @@map("users")
 }
@@ -49,4 +51,19 @@ model AiInsight {
 
   @@unique([userId, periodDays])
   @@map("ai_insights")
+}
+
+model PushSubscription {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint         String    @unique
+  p256dhKey        String
+  authSecret       String
+  lastReminderSent DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

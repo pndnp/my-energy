@@ -23,9 +23,9 @@ import authRoutes from "./modules/auth/routes.js";
 
 app.use("/api/auth", authRoutes);
 
+import { authMiddleware } from "./middleware/auth.js";
 // Daily logs routes (with auth middleware)
 import dailyLogsRoutes from "./modules/daily-logs/routes.js";
-import { authMiddleware } from "./middleware/auth.js";
 
 app.use("/api/daily-logs", authMiddleware, dailyLogsRoutes);
 
@@ -34,6 +34,13 @@ import { getInsights, regenerateInsights } from "./modules/ai/routes.js";
 
 app.get("/api/ai/insights", authMiddleware, getInsights);
 app.post("/api/ai/insights/regenerate", authMiddleware, regenerateInsights);
+
+import { startDailyReminderCron } from "./modules/push/cron.js";
+// Push subscriptions routes (with auth middleware)
+import pushRoutes from "./modules/push/routes.js";
+
+app.use("/api/push-subscriptions", authMiddleware, pushRoutes);
+startDailyReminderCron();
 
 // Error handler
 app.use((err: Error, _req: Request, res: Response, _next: unknown) => {
