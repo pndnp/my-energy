@@ -5,13 +5,14 @@ export interface AuthRequest extends Request {
   userId?: string;
 }
 
+/**
+ * Авторизация только по httpOnly-cookie «token» (JWT).
+ * Tоken устанавливается при /api/auth/login и /api/auth/register,
+ * очищается при /api/auth/logout. Bearer-заголовок НЕ поддерживается
+ * (решение design.md §1: защита от XSS, автоматическая отправка cookie).
+ */
 export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
-  // Поддерживаем и cookie, и Authorization Bearer token
-  let token: string | undefined = req.cookies?.token;
-
-  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.slice(7); // убираем "Bearer "
-  }
+  const token = req.cookies?.token;
 
   if (!token) {
     console.error("[Auth] No token found. Headers:", JSON.stringify(req.headers));
@@ -21,8 +22,13 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res
+        .status(500)
+        .json({ error: { code: "INTERNAL_ERROR", message: "Server misconfigured" } });
+    }
+    const decoded = jwt.verify(token, secret) as { userId: string };
     console.log("[Auth] Token verified for userId:", decoded.userId);
     req.userId = decoded.userId;
     next();

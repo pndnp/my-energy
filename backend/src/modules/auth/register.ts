@@ -46,6 +46,8 @@ export const register = async (req: Request, res: Response) => {
 
     const token = jwt.sign({ userId: user.id }, secret, { expiresIn });
 
+    // Токен отдаётся ТОЛЬКО в httpOnly-cookie (см. openspec mvp-application/design.md §1).
+    // В JSON-ответ токен НЕ дублируется — это исключает его утечку через localStorage/XSS.
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -53,7 +55,7 @@ export const register = async (req: Request, res: Response) => {
       path: "/",
     });
 
-    res.status(201).json({ token, user: { id: user.id, email: user.email } });
+    res.status(201).json({ user: { id: user.id, email: user.email } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } });

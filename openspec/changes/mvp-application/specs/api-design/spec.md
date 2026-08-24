@@ -18,14 +18,14 @@ All API routes MUST live under `/api/` prefix. Endpoints SHALL follow resource-b
 - **WHEN** client requests analytics data
 - **THEN** routes are: GET /api/analytics/summary, GET /api/analytics/energy, GET /api/analytics/relationships
 
-### Requirement: Bearer token authentication
+### Requirement: Session cookie authentication
 
-All protected routes MUST use HTTP Bearer token authentication. The token is obtained from /api/auth/login.
+All protected routes MUST use httpOnly session cookies. The `token` cookie (JWT) is set by /api/auth/login and /api/auth/register and cleared by /api/auth/logout.
 
-#### Scenario: Token in Authorization header
+#### Scenario: Token in Cookie header
 
-- **WHEN** making a protected API request
-- **THEN** the header `Authorization: Bearer <token>` must be present
+- **WHEN** making a protected API request from an authenticated browser session
+- **THEN** the request carries `Cookie: token=<jwt>` (sent automatically, cookie is HttpOnly)
 
 ### Requirement: Standard error response format
 

@@ -18,23 +18,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const TOKEN_KEY = "token";
-
-function saveTokenToStorage(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-function removeTokenFromStorage(): void {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const pushRequestedRef = useRef(false);
 
   useEffect(() => {
-    // Проверяем авторизацию через API (cookie уже отправляются автоматически с withCredentials: true)
+    // Проверяем авторизацию через API (httpOnly cookie отправляются
+    // браузером автоматически благодаря withCredentials: true в lib/api)
     api
       .get("/auth/me")
       .then((res) => setUser(res.data))
@@ -53,27 +44,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<void> => {
     const res = await api.post("/auth/login", { email, password });
-    const token = res.data.token;
-    if (token) {
-      saveTokenToStorage(token);
-    }
     setUser(res.data.user);
     requestPushAfterLogin();
   };
 
   const register = async (email: string, password: string): Promise<void> => {
     const res = await api.post("/auth/register", { email, password });
-    const token = res.data.token;
-    if (token) {
-      saveTokenToStorage(token);
-    }
     setUser(res.data.user);
     requestPushAfterLogin();
   };
 
   const logout = async () => {
     await api.post("/auth/logout").catch(() => {});
-    removeTokenFromStorage();
     setUser(null);
   };
 

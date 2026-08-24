@@ -18,7 +18,7 @@
 
 - [x] 3.1 Create `backend/src/modules/push/` directory structure with `routes.ts`, `controller.ts`, `service.ts`, `schema.ts` (фактические имена файлов: `routes.controller.ts`, `routes.ts`, `service.ts`, `schema.ts`)
 - [x] 3.2 Implement Zod schema for subscription validation (endpoint string required, p256dh string required, auth string required)
-- [x] 3.3 Implement `POST /api/push-subscriptions` controller: parse body, upsert subscription linked to req.userId, return 201 or 200 (прим.: роут смонтирован под `authMiddleware` — идентично daily-logs; cookie и Bearer JWT поддерживаются)
+- [x] 3.3 Implement `POST /api/push-subscriptions` controller: parse body, upsert subscription linked to req.userId, return 201 or 200 (прим.: роут смонтирован под `authMiddleware` — идентично daily-logs; авторизация по httpOnly-cookie)
 - [x] 3.4 Implement `DELETE /api/push-subscriptions/:endpoint` controller: delete by endpoint, return 200 or 404 (прим.: браузерный endpoint содержит слэши, параметр `:endpoint` не работает — используется wildcard `router.delete("*")` с парсингом endpoint из `req.url`; фронтенд шлёт `encodeURIComponent(endpoint)`; scope'd по userId)
 - [x] 3.5 Register routes in `backend/src/app.ts` under `/api/push-subscriptions` prefix (no auth middleware needed for POST—auth via token passed separately)
 

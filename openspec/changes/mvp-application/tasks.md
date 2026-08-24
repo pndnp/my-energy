@@ -18,13 +18,13 @@
 ## 3. Auth module - registration & login
 
 - [ ] 3.1 Implement /api/auth/register POST — validate email/password with zod hash password with bcrypt saltRounds=10 create user via Prisma return token
-- [ ] 3.2 Implement /api/auth/login POST — verify credentials with bcrypt generate signed JWT with expiration set httpOnly cookie or Bearer token response
+- [ ] 3.2 Implement /api/auth/login POST — verify credentials with bcrypt generate signed JWT with expiration set httpOnly cookie
 - [ ] 3.3 Implement /api/auth/logout POST — clear token invalidate session destroy cookie
 - [ ] 3.4 Send consistent error responses for 409 Conflict (duplicate email) and 400 Bad Request (validation) per api-design spec
 
 ## 4. Auth module - middleware & protected routes
 
-- [ ] 4.1 Create auth middleware that verifies JWT token from cookies or Authorization header
+- [ ] 4.1 Create auth middleware that verifies JWT token from httpOnly cookie
 - [ ] 4.2 Attach decoded user info (userId) to request context object typed as AuthenticatedRequest
 - [ ] 4.3 Apply auth middleware globally to all routes under /api/daily-logs /api/analytics /api/ai
 - [ ] 4.4 Handle expired/invalid tokens returning 401 Unauthorized per api-design spec

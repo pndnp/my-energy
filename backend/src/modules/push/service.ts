@@ -14,16 +14,21 @@ function ensureVapid() {
   }
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
+  const contact = process.env.VAPID_CONTACT ?? "mailto:admin@example.com";
   if (!publicKey || !privateKey) {
     throw new Error("VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY are not set");
   }
-  webPush.setVapidDetails("mailto:admin@example.com", publicKey, privateKey);
+  webPush.setVapidDetails(contact, publicKey, privateKey);
   vapidConfigured = true;
 }
 
-export function getMskDateString(date: Date = new Date()): string {
+export function getAppTimezone(): string {
+  return process.env.APP_TIMEZONE ?? "Europe/Moscow";
+}
+
+export function getAppDateString(date: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat(undefined, {
-    timeZone: "Europe/Moscow",
+    timeZone: getAppTimezone(),
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -112,7 +117,7 @@ export interface ReminderRunResult {
 }
 
 export async function runDailyReminder(now: Date = new Date()): Promise<ReminderRunResult> {
-  const todayMsk = getMskDateString(now);
+  const todayApp = getAppDateString(now);
   const result: ReminderRunResult = {
     totalUsers: 0,
     reminded: 0,
@@ -134,7 +139,7 @@ export async function runDailyReminder(now: Date = new Date()): Promise<Reminder
 
   for (const user of users) {
     // Дневники хранят дату как полуночь UTC строки YYYY-MM-DD — сверяемся с тем же форматом
-    const todayLogStart = new Date(`${todayMsk}T00:00:00.000Z`);
+    const todayLogStart = new Date(`${todayApp}T00:00:00.000Z`);
     const hasLog = await prisma.dailyLog.findFirst({
       where: { userId: user.id, date: todayLogStart },
       select: { id: true },
@@ -152,7 +157,7 @@ export async function runDailyReminder(now: Date = new Date()): Promise<Reminder
     for (const subscription of subscriptions) {
       if (
         subscription.lastReminderSent !== null &&
-        getMskDateString(subscription.lastReminderSent) === todayMsk
+        getAppDateString(subscription.lastReminderSent) === todayApp
       ) {
         result.skipped += 1;
         continue;
@@ -182,7 +187,7 @@ export async function runDailyReminder(now: Date = new Date()): Promise<Reminder
     }
   }
 
-  console.log(`[push] daily reminder (${todayMsk}):`, result);
+  console.log(`[push] daily reminder (${todayApp}):`, result);
   return result;
 }
 
