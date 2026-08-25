@@ -1,24 +1,29 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { FieldError } from "@/components/form/FieldError";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 const EMAIL_INPUT_PLACEHOLDER = "email@example.com";
 
 const schema = z
   .object({
-    email: z.string().email(),
-    password: z.string().min(8),
-    confirmPassword: z.string().min(8),
+    email: z.string().email({ message: "Введите корректный email" }),
+    password: z.string().min(8, { message: "Пароль должен содержать не менее 8 символов" }),
+    confirmPassword: z.string().min(8, {
+      message: "Пароль должен содержать не менее 8 символов",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
+    message: "Пароли не совпадают",
     path: ["confirmPassword"],
   });
 
@@ -27,6 +32,7 @@ type FormValues = z.infer<typeof schema>;
 export function RegisterPage() {
   const navigate = useNavigate();
   const { register: doRegister } = useAuth();
+  const [formError, setFormError] = useState<string | null>(null);
   const {
     register: registerField,
     handleSubmit,
@@ -37,8 +43,13 @@ export function RegisterPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const onSubmit = async (data: FormValues) => {
-    await doRegister(data.email, data.password);
-    navigate("/dashboard");
+    setFormError(null);
+    try {
+      await doRegister(data.email, data.password);
+      navigate("/dashboard");
+    } catch (error) {
+      setFormError(getApiErrorMessage(error));
+    }
   };
 
   return (
@@ -68,6 +79,11 @@ export function RegisterPage() {
             <Button type="submit" disabled={isSubmitting} className="w-full">
               {isSubmitting ? "Loading..." : "Register"}
             </Button>
+            {formError && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            )}
             <p className="mt-4 text-center">
               Already have an account? <Link to="/login">Login</Link>
             </p>
