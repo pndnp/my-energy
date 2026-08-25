@@ -38,7 +38,8 @@ export const getDailyLog = async (req: AuthRequest, res: Response) => {
 
     const log = await service.getByDate(userId, date);
     if (!log) {
-      return res.status(404).json({ error: { code: "NOT_FOUND", message: "No log found for this date" } });
+      // Отсутствие лога за дату — штатное состояние: 200 с телом null (см. change daily-logs-missing-200)
+      return res.status(200).json(null);
     }
 
     return res.status(200).json(log);

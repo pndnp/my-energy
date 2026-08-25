@@ -147,6 +147,11 @@ async function updatePartial(
     "energy",
   ];
 
+  const existing = await getByDate(userId, dateStr);
+  if (!existing) {
+    throw new Error("NOT_FOUND");
+  }
+
   const updateData: Prisma.DailyLogUpdateInput = {};
 
   for (const key of metricKeys) {
@@ -156,10 +161,6 @@ async function updatePartial(
   }
 
   if (Object.keys(updateData).length === 0) {
-    const existing = await getByDate(userId, dateStr);
-    if (!existing) {
-      throw new Error("NOT_FOUND");
-    }
     return existing;
   }
 

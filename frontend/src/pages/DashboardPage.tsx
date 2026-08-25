@@ -15,17 +15,8 @@ function TodayEnergy() {
   const { data: log, isLoading } = useQuery<DailyLog | null, Error>({
     queryKey: ["dailyLog", today],
     queryFn: async () => {
-      try {
-        const res = await api.get(`/daily-logs/${today}`);
-        return res.data;
-      } catch (err: unknown) {
-        // If no log found, return null (not error)
-        const axiosError = err as { response?: { status?: number } };
-        if (axiosError.response?.status === 404) {
-          return null;
-        }
-        throw err;
-      }
+      const res = await api.get(`/daily-logs/${today}`);
+      return res.data;
     },
     retry: false,
   });
