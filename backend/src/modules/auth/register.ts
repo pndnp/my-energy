@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import type { StringValue } from "ms";
+import ms from "ms";
 import { z } from "zod";
 import prisma from "../../db/index.js";
 
@@ -53,6 +54,7 @@ export const register = async (req: Request, res: Response) => {
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       path: "/",
+      maxAge: ms(expiresIn),
     });
 
     res.status(201).json({ user: { id: user.id, email: user.email } });
