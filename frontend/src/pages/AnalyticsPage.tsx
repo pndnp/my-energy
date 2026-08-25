@@ -259,7 +259,8 @@ function AnalyticsPage() {
     queryFn: async () => {
       const to = new Date();
       const from = new Date(to);
-      from.setDate(from.getDate() - period);
+      // +1 нужен чтоб период был точно {period} дней, включая значение {to}
+      from.setDate(from.getDate() - period + 1);
       const res = await api.get("/analytics", {
         params: { from: toDateParam(from), to: toDateParam(to) },
       });
