@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { FieldError } from "@/components/form/FieldError";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ const schema = z
 type FormValues = z.infer<typeof schema>;
 
 export function RegisterPage() {
+  const navigate = useNavigate();
   const { register: doRegister } = useAuth();
   const {
     register: registerField,
@@ -37,6 +38,7 @@ export function RegisterPage() {
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const onSubmit = async (data: FormValues) => {
     await doRegister(data.email, data.password);
+    navigate("/dashboard");
   };
 
   return (

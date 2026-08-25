@@ -5,7 +5,7 @@ const VAPID_PUBLIC_KEY =
   "BP16fsrwNyI7pTOanPjs4NsqgDqnE6lLkKKyPZhtPEFOewgsgmdboUwVT3M3cDQzqpHco5JaPwcuDYdx92IkWyE";
 
 // У lib.dom нет типа PushSubscriptionChangeEvent в ServiceWorkerRegistrationEventMap,
-// но само событие имеет поля `new` / `old` (оба PushSubscription | null)
+// само событие имеет поля `new` / `old` (оба PushSubscription | null)
 interface PushSubscriptionChangeLike extends Event {
   readonly new: PushSubscription | null;
   readonly old: PushSubscription | null;
@@ -51,24 +51,14 @@ export function isPushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
-export async function subscribeToPush(): Promise<void> {
-  if (!isPushSupported()) return;
+// Listener на ротацию/отзыв подписки браузером регистрируется ОДИН раз на приложение
+// (у приложения один SW-scope, поэтому повторные вызовы subscribeToPush его не дублируют).
+let changeListenerAttached = false;
 
-  // Если разрешение уже было дано ранее, запрос вернёт "granted" без диалога,
-  // а subscribe() вернёт ту же подписку — повторный upsert идемпотентен.
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return;
-
-  const registration = await navigator.serviceWorker.ready;
-  const applicationServerKey = base64UrlToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer;
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey,
-  });
-  await sendSubscriptionToServer(subscription);
-
-  // Обновление ключей / отзыв подписки браузером → синхронизируем с бэкендом
-  registration.addEventListener("pushsubscriptionchange", (event: Event) => {
+function attachSubscriptionChangeListener(registration: ServiceWorkerRegistration): void {
+  if (changeListenerAttached) return;
+  changeListenerAttached = true;
+  const handler = (event: Event): void => {
     const changeEvent = event as PushSubscriptionChangeLike;
     void (async () => {
       if (changeEvent.new === null) {
@@ -77,7 +67,47 @@ export async function subscribeToPush(): Promise<void> {
       }
       await sendSubscriptionToServer(changeEvent.new);
     })().catch(() => {});
+  };
+  // lib.dom не знает про событие pushsubscriptionchange в EventMap'е
+  // (оно есть только в lib webworker), поэтому используем строковую
+  // перегрузку addEventListener(type: string, ...)
+  registration.addEventListener("pushsubscriptionchange", handler);
+}
+
+/**
+ * Подписка на Web Push + синхронизация с бэкендом.
+ * Идемпотентна: при уже выданном разрешении subscribe() возвращает ту же
+ * (или обновлённую) подписку и повторно записывает её на сервер —
+ * это восстанавливает запись после «потери» подписки браузером (ротация ключей,
+ * рестарт браузера), поэтому вызывать можно и при логине, и при восстановлении
+ * сессии через /auth/me.
+ *
+ * Опция silent: не показывать диалог разрешения от браузера, а подписаться только
+ * если разрешение уже выдано (для тихого восстановления сессии).
+ */
+export interface SubscribeOptions {
+  silent?: boolean;
+}
+
+export async function subscribeToPush(options: SubscribeOptions = {}): Promise<void> {
+  if (!isPushSupported()) return;
+
+  if (options.silent) {
+    // Тихий режим: без диалога, только при уже данном разрешении
+    if (Notification.permission !== "granted") return;
+  } else {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return;
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  const applicationServerKey = base64UrlToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer;
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey,
   });
+  await sendSubscriptionToServer(subscription);
+  attachSubscriptionChangeListener(registration);
 }
 
 export { base64UrlToUint8Array };
