@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import api from "@/lib/api";
-import type { DailyLog } from "@/types/daily-log";
 
 const PERIODS = [
   { label: "7 дней", days: 7 },
@@ -31,8 +30,27 @@ const metricConfigs = [
   { key: "stress", label: "Стресс", emoji: "😵" },
 ] as const;
 
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
+// DTO ответа GET /api/analytics (см. backend/src/modules/analytics/analytics.ts)
+interface AnalyticsSummary {
+  averages: { energy: number; mood: number; wellbeing: number; stress: number };
+  loggedDays: number;
+  periodDays: number;
+}
+
+interface AnalyticsDay {
+  date: string;
+  energy: number;
+}
+
+interface AnalyticsResponse {
+  summary: AnalyticsSummary | null;
+  timeSeries: Record<string, number | string>[];
+  bestDays: AnalyticsDay[];
+  worstDays: AnalyticsDay[];
+}
+
+function toDateParam(d: Date): string {
+  return d.toISOString().split("T")[0];
 }
 
 /* ─── Period Selector ─────────────────────────────── */
@@ -60,17 +78,7 @@ function PeriodSelector({
 }
 
 /* ─── Summary ─────────────────────────────────────── */
-function Summary({ logs, periodDays }: { logs: DailyLog[]; periodDays: PeriodType }) {
-  if (logs.length === 0) {
-    return <EmptyState />;
-  }
-
-  const avgEnergy = round1(logs.reduce((s, l) => s + l.energy, 0) / logs.length);
-  const avgMood = round1(logs.reduce((s, l) => s + l.mood, 0) / logs.length);
-  const avgWellbeing = round1(logs.reduce((s, l) => s + l.wellbeing, 0) / logs.length);
-  const avgStress = round1(logs.reduce((s, l) => s + l.stress, 0) / logs.length);
-  const fillRate = `${logs.length} из ${periodDays} дней`;
-
+function Summary({ summary }: { summary: AnalyticsSummary }) {
   return (
     <Card>
       <CardHeader>
@@ -80,23 +88,25 @@ function Summary({ logs, periodDays }: { logs: DailyLog[]; periodDays: PeriodTyp
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/20">
             <div className="text-xs text-blue-600 dark:text-blue-400">⚡ Энергия</div>
-            <div className="mt-1 text-2xl font-bold">{avgEnergy}</div>
+            <div className="mt-1 text-2xl font-bold">{summary.averages.energy}</div>
           </div>
           <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/20">
             <div className="text-xs text-slate-600 dark:text-slate-400">🙂 Настроение</div>
-            <div className="mt-1 text-2xl font-bold">{avgMood}</div>
+            <div className="mt-1 text-2xl font-bold">{summary.averages.mood}</div>
           </div>
           <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/20">
             <div className="text-xs text-slate-600 dark:text-slate-400">❤️ Самочувствие</div>
-            <div className="mt-1 text-2xl font-bold">{avgWellbeing}</div>
+            <div className="mt-1 text-2xl font-bold">{summary.averages.wellbeing}</div>
           </div>
           <div className="rounded-lg bg-slate-50 p-3 dark:bg-slate-950/20">
             <div className="text-xs text-slate-600 dark:text-slate-400">😵 Стресс</div>
-            <div className="mt-1 text-2xl font-bold">{avgStress}</div>
+            <div className="mt-1 text-2xl font-bold">{summary.averages.stress}</div>
           </div>
           <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-950/20">
             <div className="text-xs text-gray-600 dark:text-gray-400">Заполнено</div>
-            <div className="mt-1 text-2xl font-bold">{fillRate}</div>
+            <div className="mt-1 text-2xl font-bold">
+              {summary.loggedDays} из {summary.periodDays} дней
+            </div>
           </div>
         </div>
       </CardContent>
@@ -105,7 +115,7 @@ function Summary({ logs, periodDays }: { logs: DailyLog[]; periodDays: PeriodTyp
 }
 
 /* ─── Metrics Chart ───────────────────────────────── */
-function MetricsChart({ logs }: { logs: DailyLog[] }) {
+function MetricsChart({ timeSeries }: { timeSeries: Record<string, number | string>[] }) {
   const [enabled, setEnabled] = useState<Record<string, boolean>>({
     energy: true,
     sleep: false,
@@ -115,17 +125,6 @@ function MetricsChart({ logs }: { logs: DailyLog[] }) {
   });
 
   const toggle = (key: string) => setEnabled((p) => ({ ...p, [key]: !p[key] }));
-
-  const chartData = [...logs]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((l) => ({
-      date: l.date,
-      energy: l.energy,
-      sleep: l.sleep,
-      mood: l.mood,
-      wellbeing: l.wellbeing,
-      stress: l.stress,
-    }));
 
   const colors: Record<string, string> = {
     energy: "#f59e0b",
@@ -155,24 +154,24 @@ function MetricsChart({ logs }: { logs: DailyLog[] }) {
       <CardContent>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
+            <AreaChart data={timeSeries}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
               <XAxis
                 dataKey="date"
                 fontSize={12}
                 tickFormatter={(v) => {
-                  const d = new Date(v);
+                  const d = new Date(String(v));
                   return `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
                 }}
               />
               <YAxis domain={[0, 6]} fontSize={12} />
               <Tooltip
                 content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
+                  if (!active || payload?.length === 0) return null;
                   return (
                     <div className="rounded-lg border bg-background p-2 shadow-sm">
                       <div className="mb-1 text-xs font-medium">
-                        {new Date(payload[0].payload.date).toLocaleDateString("ru-RU")}
+                        {new Date(String(payload[0].payload.date)).toLocaleDateString("ru-RU")}
                       </div>
                       {payload.map((e) => (
                         <div key={String(e.name)} className="text-xs" style={{ color: e.color }}>
@@ -204,95 +203,16 @@ function MetricsChart({ logs }: { logs: DailyLog[] }) {
   );
 }
 
-/* ─── Energy Relationships ────────────────────────── */
-interface RelationRow {
-  metricLabel: string;
-  emoji: string;
-  highAvg: number;
-  lowAvg: number;
-}
-
-function analyzeRelationships(logs: DailyLog[]): RelationRow[] {
-  const metrics: { key: keyof DailyLog; label: string; emoji: string }[] = [
-    { key: "sleep", label: "Сон", emoji: "😴" },
-    { key: "nutrition", label: "Питание", emoji: "🥗" },
-    { key: "activity", label: "Активность", emoji: "🏃" },
-    { key: "mood", label: "Настроение", emoji: "🙂" },
-    { key: "wellbeing", label: "Самочувствие", emoji: "❤️" },
-    { key: "stress", label: "Стресс", emoji: "😵" },
-    { key: "caffeine", label: "Кофе/чай", emoji: "☕" },
-    { key: "alcohol", label: "Алкоголь", emoji: "🍷" },
-  ];
-
-  return metrics
-    .map(({ key, label, emoji }) => {
-      const high = logs.filter((l) => (l[key] as number) >= 4);
-      const low = logs.filter((l) => (l[key] as number) < 4);
-      const highAvg =
-        high.length > 0 ? round1(high.reduce((s, l) => s + l.energy, 0) / high.length) : null;
-      const lowAvg =
-        low.length > 0 ? round1(low.reduce((s, l) => s + l.energy, 0) / low.length) : null;
-      return {
-        metricLabel: label,
-        emoji,
-        highAvg,
-        lowAvg,
-      };
-    })
-    .filter((r) => r.highAvg !== null || r.lowAvg !== null);
-}
-
-function EnergyRelationships({ logs }: { logs: DailyLog[] }) {
-  const relations = analyzeRelationships(logs);
-
-  if (relations.length === 0) return null;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Связи с энергией</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {relations.map((r) => (
-            <div key={r.metricLabel} className="rounded-lg border p-3 space-y-1">
-              <div className="font-medium">
-                {r.emoji} {r.metricLabel}
-              </div>
-              {r.highAvg !== null && (
-                <div className="text-sm text-muted-foreground">
-                  {r.metricLabel} ≥ 4 → средняя энергия {r.highAvg}
-                </div>
-              )}
-              {r.lowAvg !== null && (
-                <div className="text-sm text-muted-foreground">
-                  {r.metricLabel} &lt; 4 → средняя энергия {r.lowAvg}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 /* ─── Best / Worst Days ───────────────────────────── */
 function DayRanking({
   title,
   medals,
-  logs,
-  direction,
+  days,
 }: {
   title: string;
   medals: string[];
-  logs: DailyLog[];
-  direction: "desc" | "asc";
+  days: AnalyticsDay[];
 }) {
-  const ranked = [...logs]
-    .sort((a, b) => (direction === "desc" ? b.energy - a.energy : a.energy - b.energy))
-    .slice(0, 3);
-
   return (
     <Card>
       <CardHeader>
@@ -300,17 +220,17 @@ function DayRanking({
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          {ranked.length === 0 && <p className="text-sm text-muted-foreground">Нет данных</p>}
-          {ranked.map((log, i) => (
+          {days.length === 0 && <p className="text-sm text-muted-foreground">Нет данных</p>}
+          {days.map((day, i) => (
             <div
-              key={log.id}
+              key={day.date}
               className="flex items-center justify-between rounded-lg p-2 bg-muted/50"
             >
               <span className="text-sm">
                 {medals[i]}{" "}
-                {new Date(log.date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+                {new Date(day.date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
               </span>
-              <span className="font-bold text-yellow-500">⚡ {log.energy}/5</span>
+              <span className="font-bold text-yellow-500">⚡ {day.energy}/5</span>
             </div>
           ))}
         </div>
@@ -332,23 +252,20 @@ function EmptyState() {
 
 /* ─── Page ────────────────────────────────────────── */
 function AnalyticsPage() {
-  const today = new Date();
-  const [period, setPeriod] = useState<PeriodType>(30);
+  const [period, setPeriod] = useState<PeriodType>(7);
 
-  const { data: logs } = useQuery({
-    queryKey: ["dailyLogs", "analytics", period],
+  const { data: analytics, isPending } = useQuery({
+    queryKey: ["analytics", period],
     queryFn: async () => {
-      const start = new Date(today);
-      start.setDate(start.getDate() - period);
-      const from = start.toISOString().split("T")[0];
-      const to = today.toISOString().split("T")[0];
-      const res = await api.get("/daily-logs", { params: { from, to } });
-      return res.data as DailyLog[];
+      const to = new Date();
+      const from = new Date(to);
+      from.setDate(from.getDate() - period);
+      const res = await api.get("/analytics", {
+        params: { from: toDateParam(from), to: toDateParam(to) },
+      });
+      return res.data as AnalyticsResponse;
     },
   });
-
-  const sortedLogs =
-    logs?.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) || [];
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-5">
@@ -357,26 +274,15 @@ function AnalyticsPage() {
         <PeriodSelector selected={period} onSelect={setPeriod} />
       </div>
 
-      {sortedLogs.length === 0 ? (
+      {isPending ? null : !analytics?.summary ? (
         <EmptyState />
       ) : (
         <>
-          <Summary logs={sortedLogs} periodDays={period} />
-          <MetricsChart logs={sortedLogs} />
-          <EnergyRelationships logs={sortedLogs} />
+          <Summary summary={analytics.summary} />
+          <MetricsChart timeSeries={analytics.timeSeries} />
           <div className="grid gap-6 md:grid-cols-2">
-            <DayRanking
-              title="Лучшие дни"
-              medals={["🥇", "🥈", "🥉"]}
-              logs={sortedLogs}
-              direction="desc"
-            />
-            <DayRanking
-              title="Худшие дни"
-              medals={["🥉", "🥈", "🥇"]}
-              logs={sortedLogs}
-              direction="asc"
-            />
+            <DayRanking title="Лучшие дни" medals={["🥇", "🥈", "🥉"]} days={analytics.bestDays} />
+            <DayRanking title="Худшие дни" medals={["🥉", "🥈", "🥇"]} days={analytics.worstDays} />
           </div>
         </>
       )}

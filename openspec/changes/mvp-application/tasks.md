@@ -43,16 +43,15 @@
 
 - [ ] 6.1 Implement calculateSummary — compute avg values rounded to 1 decimal place for energy mood wellbeing stress within a period plus fillRate
 - [ ] 6.2 Implement getDailyTrend — retrieve ordered list of {date energy sleep nutrition activity mood wellbeing stress caffeine alcohol} for chart rendering
-- [ ] 6.3 Implement analyzeEnergyRelationships — split each metric at threshold ≥4 vs <4 compute group averages show to frontend as pregrouped pairs
+- [ ] 6.3 Implement analyzeEnergyRelationships — split each metric at threshold ≥4 vs <4 compute group averages (используется контекстом LLM; в UI не показывается)
 - [ ] 6.4 Implement getBestDays — order dailyLogs by energy DESC return top 3 (or fewer if less data)
 - [ ] 6.5 Implement getWorstDays — order by energy ASC return bottom 3
 - [ ] 6.6 Export pure TS functions with zero LLM dependencies so they can be tested in isolation and reused by AI insights
 
 ## 7. Analytics module — API endpoints
 
-- [ ] 7.1 Implement GET /api/analytics/summary — accept query parameter for selected_period default 30d call summary logic respond with JSON matching dashboard analytics spec
-- [ ] 7.2 Implement GET /api/analytics/energy — return time-series data points for the chosen period used by Recharts line chart
-- [ ] 7.3 Implement GET /api/analytics/relationships — return energy relationship analysis results for each available metric
+- [ ] 7.1 Implement GET /api/analytics?from=&to= — единый payload: summary (avg + loggedDays/periodDays), timeSeries, bestDays, worstDays (см. specs/analytics)
+- [ ] 7.2 Реализовано одним endpoint'ом вместо трёх (/summary, /energy, /relationships) — расчёты переиспользуются AI-модулем
 
 ## 8. AI Insights module — LLM integration
 
@@ -123,10 +122,10 @@
 ## 16. Frontend — Analytics page
 
 - [ ] 16.1 Create PeriodSelector component with buttons/tabs for 7 14 30 90 days switching active period
-- [ ] 16.2 Fetch and display Summary stats average values fillRate using data from /api/analytics/summary
-- [ ] 16.3 Fetch multi-line chart data from /api/analytics/energy enable toggle checkboxes for individual metrics
-- [ ] 16.4 Render Recharts ComposedChart with dynamic datasets based on enabled checkboxes
-- [ ] 16.5 Fetch relationships from /api/analytics/relationships and render EnergyRelationship cards showing split groups
+- [ ] 16.2 Fetch и рендер Summary (avg values + fill rate) из единого ответа GET /api/analytics
+- [ ] 16.3 Render multi-line chart по timeSeries из /api/analytics с toggle-кнопками метрик
+- [ ] 16.4 Render Recharts ComposedChart с динамическими datasets по включённым метрикам
+- [ ] 16.5 (отменено) Блок «Связи с энергией» из UI убран — расчёт остаётся на бэкенде для AI-контекста
 - [ ] 16.6 Display BestDays WorstDays sections with medal icons ranking and dates
 
 ## 17. Frontend — AI Insights page

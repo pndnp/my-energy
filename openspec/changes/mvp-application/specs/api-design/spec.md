@@ -16,7 +16,7 @@ All API routes MUST live under `/api/` prefix. Endpoints SHALL follow resource-b
 #### Scenario: Analytics route organization
 
 - **WHEN** client requests analytics data
-- **THEN** routes are: GET /api/analytics/summary, GET /api/analytics/energy, GET /api/analytics/relationships
+- **THEN** route is: GET /api/analytics?from=&to= (единый payload: summary, timeSeries, bestDays, worstDays)
 
 ### Requirement: Session cookie authentication
 

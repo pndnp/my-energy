@@ -29,6 +29,11 @@ import dailyLogsRoutes from "./modules/daily-logs/routes.js";
 
 app.use("/api/daily-logs", authMiddleware, dailyLogsRoutes);
 
+// Analytics routes (with auth middleware)
+import analyticsRoutes from "./modules/analytics/routes.js";
+
+app.use("/api/analytics", analyticsRoutes);
+
 // AI Insights routes (with auth middleware)
 import { getInsights, regenerateInsights } from "./modules/ai/routes.js";
 

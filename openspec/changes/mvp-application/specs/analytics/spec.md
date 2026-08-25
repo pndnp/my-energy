@@ -1,8 +1,22 @@
 ## Purpose
 
-Provides statistical summaries, comparison charts, energy relationships and best/worst day analysis across configurable time periods to help users discover patterns in their data.
+Provides statistical summaries, comparison charts and best/worst day analysis across configurable time periods to help users discover patterns in their data. Statistics are computed server-side in `GET /api/analytics` (single endpoint); the frontend renders the result and does not perform its own calculations.
 
 ## ADDED Requirements
+
+### Requirement: Server-computed analytics endpoint
+
+The system MUST expose `GET /api/analytics?from=&to=` (authenticated) returning one JSON payload: `summary` (averages + loggedDays/periodDays), `timeSeries` (per-day metric points for the chart), `bestDays` (top-3 by energy desc) and `worstDays` (top-3 by energy asc). The frontend SHALL render analytics from this endpoint only.
+
+#### Scenario: Requesting analytics for a period
+
+- **WHEN** an authenticated user requests GET /api/analytics?from=&to=
+- **THEN** server returns computed summary, time series and day rankings for that range
+
+#### Scenario: Empty period
+
+- **WHEN** the user has no logs within the requested range
+- **THEN** server returns `{ "summary": null, "timeSeries": [], "bestDays": [], "worstDays": [] }` and the frontend shows an empty state
 
 ### Requirement: Period selection
 
@@ -45,15 +59,6 @@ Users MUST be able to compare multiple metrics simultaneously via a line chart w
 
 - **WHEN** only one checkbox is selected
 - **THEN** the chart displays that single metric's daily values
-
-### Requirement: Energy relationship analysis
-
-The system SHALL calculate how splitting each metric at a threshold (≥ 4 vs < 4) affects average energy.
-
-#### Scenario: Sleep-energy relationship
-
-- **WHEN** user opens the relationship section
-- **THEN** system shows: "Сон ≥ 4 → средняя энергия X.Y" and "Сон < 4 → средняя энергия Z.W" based on actual data
 
 ### Requirement: Best and worst days
 
